@@ -1,0 +1,121 @@
+name: Sanity Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      js: ${{ steps.filter.outputs.js }}
+      java: ${{ steps.filter.outputs.java }}
+      cpp: ${{ steps.filter.outputs.cpp }}
+      rust: ${{ steps.filter.outputs.rust }}
+      swift: ${{ steps.filter.outputs.swift }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            js:
+              - '**/*.js'
+              - '**/*.jsx'
+              - '**/*.ts'
+              - '**/*.tsx'
+              - '**/*.vue'
+            java:
+              - '**/*.java'
+            cpp:
+              - '**/*.c'
+              - '**/*.cpp'
+              - '**/*.h'
+              - '**/*.hpp'
+            rust:
+              - '**/*.rs'
+            swift:
+              - '**/*.swift'
+
+  lint-js:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.js == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ESLint
+        run: npx eslint . --ext .js,.jsx,.ts,.tsx,.vue --max-warnings=0
+
+  lint-java:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.java == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download Checkstyle
+        run: |
+          CHECKSTYLE_VER="10.12.4"
+          curl -sL -o checkstyle.jar "https://github.com/checkstyle/checkstyle/releases/download/checkstyle-${CHECKSTYLE_VER}/checkstyle-${CHECKSTYLE_VER}-all.jar"
+          curl -sL -o google_checks.xml "https://raw.githubusercontent.com/checkstyle/checkstyle/master/src/main/resources/google_checks.xml"
+      - name: Run Checkstyle
+        run: |
+          java -jar checkstyle.jar -c google_checks.xml -f plain src || (echo "Checkstyle violations found" && exit 1)
+
+  lint-cpp:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.cpp == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: Run cppcheck
+        run: cppcheck --enable=all --inconclusive --error-exitcode=1 .
+
+  lint-rust:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.rust == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust + Clippy
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  lint-swift:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.swift == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Run SwiftLint
+        run: swiftlint lint --strict
+
+  label-success:
+    needs: [lint-js, lint-java, lint-cpp, lint-rust, lint-swift]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Sanity Check label to PR
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: Sanity Check
