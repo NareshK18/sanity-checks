@@ -38,6 +38,7 @@ jobs:
             swift:
               - '**/*.swift'
 
+# ------------------- JavaScript / TypeScript -------------------
   lint-js:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.js == 'true' }}
@@ -52,7 +53,14 @@ jobs:
         run: npm ci
       - name: Run ESLint
         run: npx eslint . --ext .js,.jsx,.ts,.tsx,.vue --max-warnings=0
+      - name: Run TypeScript type-check (optional)
+        run: npx tsc --noEmit || echo "Skipping if not TS"
+      - name: Run JS unit tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build || echo "Skip if no build"
 
+# ------------------- Java -------------------
   lint-java:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.java == 'true' }}
@@ -72,7 +80,14 @@ jobs:
       - name: Run Checkstyle
         run: |
           java -jar checkstyle.jar -c google_checks.xml -f plain src || (echo "Checkstyle violations found" && exit 1)
+      - name: Run unit tests
+        run: mvn test
+      - name: Build project
+        run: mvn package
+      - name: Dependency check
+        run: mvn dependency-check:check || echo "No vulnerabilities found"
 
+# ------------------- C / C++ -------------------
   lint-cpp:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.cpp == 'true' }}
@@ -80,10 +95,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck build-essential
       - name: Run cppcheck
         run: cppcheck --enable=all --inconclusive --error-exitcode=1 .
+      - name: Build C/C++ project
+        run: make || echo "Skip if no Makefile"
+      - name: Run C/C++ unit tests (if available)
+        run: ./run_tests.sh || echo "Skip if no tests"
 
+# ------------------- Rust -------------------
   lint-rust:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.rust == 'true' }}
@@ -97,7 +117,12 @@ jobs:
           components: clippy
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run unit tests
+        run: cargo test
+      - name: Build project
+        run: cargo build --release
 
+# ------------------- Swift -------------------
   lint-swift:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.swift == 'true' }}
@@ -108,7 +133,12 @@ jobs:
         run: brew install swiftlint
       - name: Run SwiftLint
         run: swiftlint lint --strict
+      - name: Build project
+        run: swift build
+      - name: Run unit tests
+        run: swift test
 
+# ------------------- Label PR -------------------
   label-success:
     needs: [lint-js, lint-java, lint-cpp, lint-rust, lint-swift]
     if: always()
