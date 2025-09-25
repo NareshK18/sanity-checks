@@ -2,10 +2,12 @@ name: Multi-Language CI/CD
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronise, reopened]
   push:
     branches:
       - main
+      - develop
+      - 'feature/*'
 
 jobs:
   detect-changes:
@@ -41,6 +43,9 @@ jobs:
             swift:
               - '**/*.swift'
 
+# ---------------------------
+# JavaScript / TypeScript / Vue
+# ---------------------------
   lint-js:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.js == 'true' }}
@@ -59,10 +64,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run ESLint
-        run: npx eslint . --ext .js,.jsx,.ts,.tsx,.vue --max-warnings=0
-      - name: Run Security Scan
+        run: npx eslint. --ext .js,.jsx,.ts,.tsx,.vue --max-warnings=0
+      - name: Run Jest Tests
+        run: npm test -- --coverage
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: js-coverage
+          path: coverage
+      - name: Security Scan
         run: npm audit --audit-level=moderate
 
+# ---------------------------
+# Java
+# ---------------------------
   lint-java:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.java == 'true' }}
@@ -86,7 +101,17 @@ jobs:
           curl -sL -o google_checks.xml "https://raw.githubusercontent.com/checkstyle/checkstyle/master/src/main/resources/google_checks.xml"
       - name: Run Checkstyle
         run: java -jar checkstyle.jar -c google_checks.xml -f plain src || (echo "Checkstyle violations found" && exit 1)
+      - name: Run Maven Tests & Coverage
+        run: mvn clean verify jacoco:report
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: java-coverage
+          path: target/site/jacoco
 
+# ---------------------------
+# C / C++
+# ---------------------------
   lint-cpp:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.cpp == 'true' }}
@@ -97,7 +122,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: Run cppcheck
         run: cppcheck --enable=all --inconclusive --error-exitcode=1 .
+      - name: Security Scan
+        run: flawfinder.
 
+# ---------------------------
+# Rust
+# ---------------------------
   lint-rust:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.rust == 'true' }}
@@ -111,7 +141,21 @@ jobs:
           components: clippy
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run Tests & Coverage
+        run: |
+          cargo test --all --verbose
+          cargo tarpaulin --out Xml
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: rust-coverage
+          path: tarpaulin-report.xml
+      - name: Security Scan
+        run: cargo audit || true
 
+# ---------------------------
+# Swift
+# ---------------------------
   lint-swift:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.swift == 'true' }}
@@ -122,14 +166,48 @@ jobs:
         run: brew install swiftlint
       - name: Run SwiftLint
         run: swiftlint lint --strict
+      - name: Run Tests
+        run: swift test
+      - name: Security Scan
+        run: echo "Swift security checks can be added here"
 
+# ---------------------------
+# Label PR
+# ---------------------------
   label-success:
     needs: [lint-js, lint-java, lint-cpp, lint-rust, lint-swift]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Add Sanity Check label to PR
+      - name: Add Multi-Language CI/CD label to PR
         uses: actions-ecosystem/action-add-labels@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          labels: Sanity Check
+          labels: Multi-Language CI/CD
+
+# ---------------------------
+# Zoho Mail Notification on Failure
+# ---------------------------
+  notify-zoho-mail:
+    needs: [lint-js, lint-java, lint-cpp, lint-rust, lint-swift]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Zoho Mail Notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.ZOHO_MAIL_SMTP }}
+          server_port: ${{ secrets.ZOHO_MAIL_PORT }}
+          username: ${{ secrets.ZOHO_MAIL_USERNAME }}
+          password: ${{ secrets.ZOHO_MAIL_PASSWORD }}
+          subject: "❌ Multi-Language CI/CD Workflow Failed"
+          body: |
+            Hello Naresh,
+
+            The Multi-Language CI/CD workflow has failed.
+            Please check the GitHub Actions tab for logs and errors.
+
+            Regards,
+            GitHub Actions
+          to: ${{ secrets.ZOHO_MAIL_TO }}
+          from: ${{ secrets.ZOHO_MAIL_USERNAME }}
