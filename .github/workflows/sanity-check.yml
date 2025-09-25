@@ -122,13 +122,13 @@ jobs:
       - name: Run unit tests
         run: swift test
 
-  label-success:
-    needs: [lint-js, lint-java, lint-cpp, lint-rust, lint-swift]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Add 'Sanity Check' label to PR
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          labels: Sanity Check
+  # label-success:
+  #   needs: [lint-js, lint-java, lint-cpp, lint-rust, lint-swift]
+  #   if: always()
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Add 'Sanity Check' label to PR
+  #       uses: actions-ecosystem/action-add-labels@v1
+  #       with:
+  #         github_token: ${{ secrets.GITHUB_TOKEN }}
+  #         labels: Sanity Check
